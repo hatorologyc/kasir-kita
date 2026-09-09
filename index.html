@@ -840,22 +840,28 @@
         <div class="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl relative flex flex-col">
             <div class="flex justify-between items-center mb-4">
                 <h3 class="text-xs font-black text-slate-800 uppercase flex items-center gap-2">
-                    <i class="fas fa-camera text-blue-600"></i> Pindai Barcode / QR Code
+                    <i class="fas fa-barcode text-blue-600"></i> Pindai Barcode / QR Code
                 </h3>
                 <button onclick="closeCameraScanner()" class="text-slate-400 hover:text-slate-600">
                     <i class="fas fa-times text-lg"></i>
                 </button>
             </div>
-            
-            <button onclick="triggerFileInput()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold py-3 px-4 rounded-2xl transition-all flex items-center justify-center gap-2 mb-4 shadow-md uppercase tracking-wider">
-                <i class="fas fa-camera text-sm"></i> Ambil Foto Barcode / QR
-            </button>
-            
-            <input type="file" id="barcodeFileInput" accept="image/*" capture="environment" class="hidden" onchange="handleFileSelect(event)">
-            
-            <div class="relative w-full aspect-square bg-black rounded-2xl overflow-hidden mb-4 border flex items-center justify-center">
+
+            <!-- Live camera feed: pemindaian berlangsung otomatis secara real-time -->
+            <div class="relative w-full aspect-square bg-black rounded-2xl overflow-hidden mb-3 border flex items-center justify-center">
                 <div id="reader" class="w-full h-full"></div>
+                <div id="scannerStatus" class="absolute bottom-0 inset-x-0 bg-black/60 text-white text-[10px] font-bold uppercase tracking-wider text-center py-2">
+                    <i class="fas fa-spinner fa-spin mr-1.5"></i> Membuka kamera...
+                </div>
             </div>
+
+            <p class="text-center text-[10px] text-slate-400 font-semibold mb-3">Arahkan kamera ke barcode/QR — akan terdeteksi otomatis, tidak perlu memotret.</p>
+
+            <!-- Fallback kecil: hanya untuk kondisi kamera tidak bisa diakses -->
+            <button onclick="triggerFileInput()" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-500 text-[10px] font-bold py-2.5 px-4 rounded-xl transition-all flex items-center justify-center gap-2 uppercase tracking-wider">
+                <i class="fas fa-image text-xs"></i> Kamera bermasalah? Pilih foto dari galeri
+            </button>
+            <input type="file" id="barcodeFileInput" accept="image/*" capture="environment" class="hidden" onchange="handleFileSelect(event)">
         </div>
     </div>
 
@@ -2816,25 +2822,61 @@
 
         function openCameraScanner() {
             document.getElementById('cameraModal').classList.remove('hidden');
+            setScannerStatus('Membuka kamera...', true);
+
+            if (!navigator.mediaDevices || !window.isSecureContext) {
+                setScannerStatus('Kamera butuh koneksi HTTPS. Gunakan tombol galeri di bawah.', false);
+                return;
+            }
+
             Html5Qrcode.getCameras().then(devices => {
                 if (devices && devices.length > 0) {
                     let backCam = devices.find(d => d.label.toLowerCase().includes('back') || d.label.toLowerCase().includes('belakang'));
                     startScanning(backCam ? backCam.id : devices[0].id);
+                } else {
+                    setScannerStatus('Kamera tidak ditemukan di perangkat ini.', false);
                 }
-            }).catch(e => showNotification("Kamera tidak dapat diakses.", "info"));
+            }).catch(e => {
+                setScannerStatus('Izin kamera ditolak / tidak tersedia.', false);
+                showNotification("Kamera tidak dapat diakses. Coba opsi galeri di bawah.", "info");
+            });
+        }
+
+        function setScannerStatus(text, spinning) {
+            const el = document.getElementById('scannerStatus');
+            if (!el) return;
+            el.innerHTML = (spinning ? '<i class="fas fa-spinner fa-spin mr-1.5"></i>' : '<i class="fas fa-video-slash mr-1.5"></i>') + text;
         }
 
         function startScanning(camId) {
-            html5QrScanner = new Html5Qrcode("reader");
-            html5QrScanner.start(camId, { fps: 15, qrbox: { width: 250, height: 250 } }, (text) => {
-                handleScannedBarcode(text);
-                closeCameraScanner();
-            }).catch(e => {});
+            html5QrScanner = new Html5Qrcode("reader", { verbose: false });
+            // qrbox persegi panjang lebih pas untuk barcode 1D sekaligus tetap mendukung QR code
+            const scanConfig = { fps: 15, qrbox: { width: 260, height: 160 }, aspectRatio: 1.0 };
+
+            html5QrScanner.start(
+                camId,
+                scanConfig,
+                (decodedText) => {
+                    handleScannedBarcode(decodedText);
+                    closeCameraScanner();
+                },
+                () => { /* callback per-frame saat belum terdeteksi, diabaikan agar tidak spam */ }
+            ).then(() => {
+                document.getElementById('scannerStatus').classList.add('hidden');
+            }).catch(e => {
+                setScannerStatus('Gagal memulai kamera. Coba opsi galeri di bawah.', false);
+            });
         }
 
         function closeCameraScanner() {
             document.getElementById('cameraModal').classList.add('hidden');
-            if (html5QrScanner) { html5QrScanner.stop().then(() => html5QrScanner = null).catch(e => html5QrScanner = null); }
+            document.getElementById('scannerStatus').classList.remove('hidden');
+            if (html5QrScanner) {
+                html5QrScanner.stop().then(() => {
+                    html5QrScanner.clear();
+                    html5QrScanner = null;
+                }).catch(() => { html5QrScanner = null; });
+            }
         }
 
         function triggerFileInput() { document.getElementById('barcodeFileInput').click(); }
@@ -2842,11 +2884,23 @@
         function handleFileSelect(event) {
             const file = event.target.files[0];
             if (!file) return;
-            const fileScanner = new Html5Qrcode("reader");
-            fileScanner.scanFile(file, true).then(decodedText => {
-                handleScannedBarcode(decodedText);
-                closeCameraScanner();
-            }).catch(err => showNotification("Barcode tidak terbaca dari foto", "error"));
+
+            // Hentikan live scanner dulu (jika berjalan) sebelum memindai dari file gambar
+            const scanImage = () => {
+                const fileScanner = new Html5Qrcode("reader");
+                fileScanner.scanFile(file, true).then(decodedText => {
+                    fileScanner.clear();
+                    handleScannedBarcode(decodedText);
+                    closeCameraScanner();
+                }).catch(err => showNotification("Barcode tidak terbaca dari foto", "error"));
+            };
+
+            if (html5QrScanner) {
+                html5QrScanner.stop().then(() => { html5QrScanner = null; scanImage(); }).catch(() => { html5QrScanner = null; scanImage(); });
+            } else {
+                scanImage();
+            }
+            event.target.value = "";
         }
 
         function handleScannedBarcode(code) {
