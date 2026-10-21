@@ -865,6 +865,43 @@
         </div>
     </div>
 
+    <!-- MODAL BATALKAN TRANSAKSI (ADMIN) -->
+    <div id="cancelTrxModal" class="fixed inset-0 bg-slate-900/60 hidden z-[270] flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl relative">
+            <div class="flex justify-between items-center mb-4 pb-3 border-b">
+                <h3 class="text-sm font-black text-rose-600 uppercase flex items-center gap-2">
+                    <i class="fas fa-ban"></i> Batalkan Transaksi
+                </h3>
+                <button onclick="closeCancelTrxModal()" class="text-slate-400 hover:text-slate-600">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <div class="bg-rose-50 border border-rose-200 p-3.5 rounded-2xl space-y-1.5 text-xs font-bold mb-4">
+                <div class="flex justify-between text-slate-600"><span>ID Transaksi:</span><span id="cancelTrxIdLabel" class="font-mono text-blue-600 font-black"></span></div>
+                <div class="flex justify-between text-slate-600"><span>Pelanggan:</span><span id="cancelTrxCustLabel" class="text-slate-900 font-black"></span></div>
+                <div class="flex justify-between text-slate-600"><span>Total:</span><span id="cancelTrxTotalLabel" class="text-slate-900 font-black"></span></div>
+                <div class="text-[10px] text-slate-500 font-semibold pt-1 border-t border-rose-200" id="cancelTrxItemsLabel"></div>
+            </div>
+
+            <p class="text-[11px] text-slate-500 font-semibold mb-3 leading-relaxed">
+                Stok produk pada transaksi ini akan <span class="font-black text-emerald-600">dikembalikan</span> dan transaksi tidak lagi dihitung di laporan. Tindakan ini tidak dapat diurungkan.
+            </p>
+
+            <form onsubmit="event.preventDefault(); submitCancelTransaction();" class="space-y-3">
+                <input type="hidden" id="cancelTrxId">
+                <div>
+                    <label class="text-[10px] font-black text-slate-400 uppercase block mb-1">Alasan Pembatalan</label>
+                    <textarea id="cancelTrxReason" rows="2" class="w-full p-3 bg-slate-100 rounded-xl text-xs font-bold border outline-none focus:ring-2 focus:ring-rose-500" placeholder="Contoh: salah input barang / pelanggan batal beli" required></textarea>
+                </div>
+                <div class="flex gap-2 pt-2">
+                    <button type="button" onclick="closeCancelTrxModal()" class="flex-1 py-3 text-slate-400 font-extrabold text-xs uppercase">Tutup</button>
+                    <button type="submit" id="btnConfirmCancelTrx" class="flex-[2] bg-rose-600 hover:bg-rose-700 text-white font-extrabold py-3.5 rounded-xl shadow-md text-xs uppercase tracking-wider">Ya, Batalkan Transaksi</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- CETAK STRUK THERMAL -->
     <div id="receiptPrint" class="font-mono text-[11px] leading-tight p-4">
         <div class="text-center mb-3 border-b border-dashed pb-2">
@@ -1015,7 +1052,7 @@
          * "Mode Simulasi" (data contoh/lokal) seperti sebelumnya — berguna untuk
          * preview tampilan sebelum backend selesai di-deploy.
          */
-        const API_URL = "https://script.google.com/macros/s/AKfycbwifOfBenJQgkwbWsjbZjgdRFUQYWqXbXhrb2tAHzh9tFeLm46vO-iqKsMxD7ppF3z7Vw/exec"; // <-- TEMPEL URL WEB APP GOOGLE APPS SCRIPT ANDA DI SINI (diakhiri /exec)
+        const API_URL = ""; // <-- TEMPEL URL WEB APP GOOGLE APPS SCRIPT ANDA DI SINI (diakhiri /exec)
 
         (function initGoogleScriptBridge() {
             const url = (API_URL || "").trim();
@@ -1905,9 +1942,10 @@
                 });
             }
 
-            const totalSisa = allDebts.reduce((sum, d) => sum + (Number(d.sisaHutang) || 0), 0);
-            const unpaidCount = allDebts.filter(d => (Number(d.sisaHutang) || 0) > 0).length;
-            const paidCount = allDebts.filter(d => (Number(d.sisaHutang) || 0) <= 0).length;
+            const activeDebts = allDebts.filter(d => (d.status || '').toLowerCase() !== 'dibatalkan');
+            const totalSisa = activeDebts.reduce((sum, d) => sum + (Number(d.sisaHutang) || 0), 0);
+            const unpaidCount = activeDebts.filter(d => (Number(d.sisaHutang) || 0) > 0).length;
+            const paidCount = activeDebts.filter(d => (Number(d.sisaHutang) || 0) <= 0).length;
 
             document.getElementById('debtTotalRemaining').innerText = "Rp " + totalSisa.toLocaleString();
             document.getElementById('debtUnpaidCount').innerText = `${unpaidCount} Pelanggan`;
@@ -1925,8 +1963,11 @@
 
             tbody.innerHTML = list.map(d => {
                 const sisa = Number(d.sisaHutang) || 0;
+                const isCancelledDebt = (d.status || '').toLowerCase() === 'dibatalkan';
                 const isLunas = sisa <= 0;
-                const statusBadge = isLunas ? 
+                const statusBadge = isCancelledDebt ?
+                    '<span class="px-2.5 py-1 rounded-full text-[10px] font-black bg-slate-200 text-slate-600 border border-slate-300">DIBATALKAN</span>' :
+                    isLunas ? 
                     '<span class="px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200">LUNAS</span>' :
                     '<span class="px-2.5 py-1 rounded-full text-[10px] font-black bg-rose-100 text-rose-800 border border-rose-200">Belum Lunas</span>';
 
@@ -1941,7 +1982,7 @@
                     <td class="p-4 text-slate-500">${d.jatuhTempo || '-'}</td>
                     <td class="p-4 text-center">${statusBadge}</td>
                     <td class="p-4 text-right space-x-1">
-                        ${!isLunas ? `<button onclick="openPayDebtModal('${d.trxId}')" class="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-[10px] uppercase rounded-xl shadow-sm"><i class="fas fa-hand-holding-usd mr-1"></i> Bayar</button>` : ''}
+                        ${(!isLunas && !isCancelledDebt) ? `<button onclick="openPayDebtModal('${d.trxId}')" class="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-[10px] uppercase rounded-xl shadow-sm"><i class="fas fa-hand-holding-usd mr-1"></i> Bayar</button>` : ''}
                         <button onclick="openDebtHistoryModal('${d.trxId}')" class="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-[10px]"><i class="fas fa-history mr-1"></i> Log</button>
                     </td>
                 </tr>`;
@@ -2121,7 +2162,7 @@
 
             document.getElementById('debtPrintDateGenerated').innerText = new Date().toLocaleString('id-ID');
 
-            let filteredList = allDebts;
+            let filteredList = allDebts.filter(d => (d.status || '').toLowerCase() !== 'dibatalkan');
             if (currentDebtFilter !== 'SEMUA') {
                 filteredList = filteredList.filter(d => (d.status || 'Belum Lunas').toLowerCase() === currentDebtFilter.toLowerCase());
             }
@@ -2552,7 +2593,7 @@
             }
 
             text += `===============================\n`;
-            text += `_Terima kasih telah berbelanja di SmartKASIR! Barang yang sudah dibeli tidak dapat ditukar/dikembalikan_\n`;
+            text += `_Terima kasih telah berbelanja di SmartKASIR!_\n`;
 
             const waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
             window.open(waUrl, '_blank');
@@ -2564,12 +2605,15 @@
             list.innerHTML = '<div class="text-center py-12 text-slate-400 text-xs"><i class="fas fa-spinner fa-spin mr-2"></i>Memuat data...</div>';
             
             if(typeof google === 'undefined' || !google.script || !google.script.run) {
-                renderHistoryList([
-                    ['TRX-001', '27/06/2026 12:00', 'Budi Santoso', 'admin', 'FARSIFEN 200MG KAP (2x4500)', 9000, 2000, 0, 0, 'Tunai']
-                ]);
+                renderHistoryList(mockHistoryData);
                 return;
             }
-            google.script.run.withSuccessHandler(data => renderHistoryList(data)).getReports();
+            google.script.run.withSuccessHandler(data => {
+                rawHistory = data || [];
+                renderHistoryList(rawHistory);
+            }).withFailureHandler(err => {
+                list.innerHTML = '<div class="text-center py-12 text-red-400 text-xs">Gagal memuat riwayat: ' + (err.message || err) + '</div>';
+            }).getReports();
         }
 
         function renderHistoryList(data) {
@@ -2580,31 +2624,149 @@
                 return;
             }
 
-            list.innerHTML = valid.slice(-10).reverse().map(trx => `
-                <div class="bg-white p-4 rounded-2xl border shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
-                    <div>
-                        <div class="flex items-center gap-2 mb-1">
-                            <span class="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">#${trx[0]}</span>
-                            <span class="text-[9px] font-bold text-slate-400">${cleanTimeFormat(trx[1])}</span>
-                            <span class="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-slate-100 text-slate-700">${trx[9] || 'Tunai'}</span>
-                        </div>
-                        <div class="text-xs font-black text-slate-800 uppercase">${trx[4]}</div>
-                        <div class="text-[10px] text-slate-400 font-bold mt-0.5">Pelanggan: <span class="text-blue-600">${trx[2] || 'Umum'}</span> | Kasir: ${trx[3]}</div>
-                    </div>
-                    <div class="flex items-center gap-2 w-full md:w-auto justify-between border-t md:border-none pt-2 md:pt-0">
-                        <div class="text-right mr-2">
-                            <div class="text-[9px] text-slate-400 font-bold uppercase">Total Akhir</div>
-                            <div class="text-sm font-black text-blue-600">Rp ${Number(trx[5] || 0).toLocaleString()}</div>
-                        </div>
+            const isAdmin = currentUser && currentUser.role === 'Admin';
+
+            list.innerHTML = valid.slice(-30).reverse().map(trx => {
+                const isCancelled = isTrxCancelled(trx);
+                const cancelInfo = isCancelled
+                    ? `<div class="text-[10px] text-rose-600 font-bold mt-1"><i class="fas fa-ban mr-1"></i>Dibatalkan oleh ${trx[11] || '-'}${trx[12] ? ' pada ' + cleanTimeFormat(trx[12]) : ''}${trx[13] && trx[13] !== '-' ? ' — Alasan: ' + trx[13] : ''}</div>`
+                    : '';
+
+                const actionButtons = isCancelled ? '' : `
                         <button onclick='openReceiptFromHistory(${JSON.stringify(trx)})' class="bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] font-black uppercase px-2.5 py-2 rounded-xl flex items-center gap-1 shadow-sm">
                             <i class="fab fa-whatsapp"></i> STRUK & WA
                         </button>
                         <button onclick='reprintTrx(${JSON.stringify(trx)})' class="bg-slate-900 text-white text-[9px] font-black uppercase px-2.5 py-2 rounded-xl hover:bg-blue-600">
                             <i class="fas fa-print"></i> STRUK
                         </button>
+                        ${isAdmin ? `
+                        <button onclick="openCancelTrxModal('${trx[0]}')" class="bg-rose-600 hover:bg-rose-700 text-white text-[9px] font-black uppercase px-2.5 py-2 rounded-xl flex items-center gap-1 shadow-sm" title="Batalkan transaksi & kembalikan stok">
+                            <i class="fas fa-ban"></i> BATALKAN
+                        </button>` : ''}`;
+
+                return `
+                <div class="bg-white p-4 rounded-2xl border shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-3 ${isCancelled ? 'opacity-70 bg-rose-50/40 border-rose-200' : ''}">
+                    <div>
+                        <div class="flex items-center gap-2 mb-1 flex-wrap">
+                            <span class="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">#${trx[0]}</span>
+                            <span class="text-[9px] font-bold text-slate-400">${cleanTimeFormat(trx[1])}</span>
+                            <span class="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-slate-100 text-slate-700">${trx[9] || 'Tunai'}</span>
+                            ${isCancelled ? '<span class="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-rose-100 text-rose-700 border border-rose-200">DIBATALKAN</span>' : ''}
+                        </div>
+                        <div class="text-xs font-black text-slate-800 uppercase ${isCancelled ? 'line-through' : ''}">${trx[4]}</div>
+                        <div class="text-[10px] text-slate-400 font-bold mt-0.5">Pelanggan: <span class="text-blue-600">${trx[2] || 'Umum'}</span> | Kasir: ${trx[3]}</div>
+                        ${cancelInfo}
                     </div>
-                </div>
-            `).join('');
+                    <div class="flex items-center gap-2 w-full md:w-auto justify-between border-t md:border-none pt-2 md:pt-0">
+                        <div class="text-right mr-2">
+                            <div class="text-[9px] text-slate-400 font-bold uppercase">Total Akhir</div>
+                            <div class="text-sm font-black ${isCancelled ? 'text-slate-400 line-through' : 'text-blue-600'}">Rp ${Number(trx[5] || 0).toLocaleString()}</div>
+                        </div>
+                        ${actionButtons}
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        // ===== PEMBATALAN TRANSAKSI (ADMIN) =====
+        let rawHistory = [];
+        // Data contoh untuk Mode Simulasi (tanpa backend)
+        let mockHistoryData = [
+            ['TRX-SIM-001', '27/06/2026 12:00', 'Budi Santoso', 'admin', 'FARSIFEN 200MG KAP (2)', 9000, 2000, 0, 0, 'Tunai', 'Selesai', '', '', ''],
+            ['TRX-SIM-002', '27/06/2026 13:10', 'Umum', 'kasir', 'BERAS ROJO LELE SUPER (3), GULA PASIR KRISTAL (1)', 58000, 10000, 0, 0, 'QRIS', 'Selesai', '', '', '']
+        ];
+
+        function isTrxCancelled(trx) {
+            return ((trx && trx[10]) || '').toString().trim().toLowerCase() === 'dibatalkan';
+        }
+
+        function findHistoryTrx(trxId) {
+            const src = (typeof google === 'undefined' || !google.script || !google.script.run) ? mockHistoryData : rawHistory;
+            return src.find(t => t && t[0] === trxId);
+        }
+
+        function openCancelTrxModal(trxId) {
+            if (!currentUser || currentUser.role !== 'Admin') {
+                return showNotification("Hanya Admin yang dapat membatalkan transaksi!", "error");
+            }
+            const trx = findHistoryTrx(trxId);
+            if (!trx) return showNotification("Data transaksi tidak ditemukan, coba refresh riwayat.", "error");
+            if (isTrxCancelled(trx)) return showNotification("Transaksi ini sudah dibatalkan.", "info");
+
+            document.getElementById('cancelTrxId').value = trx[0];
+            document.getElementById('cancelTrxIdLabel').innerText = '#' + trx[0];
+            document.getElementById('cancelTrxCustLabel').innerText = trx[2] || 'Umum';
+            document.getElementById('cancelTrxTotalLabel').innerText = 'Rp ' + Number(trx[5] || 0).toLocaleString();
+            document.getElementById('cancelTrxItemsLabel').innerText = trx[4] || '';
+            document.getElementById('cancelTrxReason').value = '';
+            document.getElementById('cancelTrxModal').classList.remove('hidden');
+        }
+
+        function closeCancelTrxModal() {
+            document.getElementById('cancelTrxModal').classList.add('hidden');
+        }
+
+        function submitCancelTransaction() {
+            if (!currentUser || currentUser.role !== 'Admin') {
+                return showNotification("Hanya Admin yang dapat membatalkan transaksi!", "error");
+            }
+            const trxId = document.getElementById('cancelTrxId').value;
+            const alasan = document.getElementById('cancelTrxReason').value.trim();
+            if (!trxId) return;
+            if (!alasan) return showNotification("Alasan pembatalan wajib diisi!", "error");
+
+            const btn = document.getElementById('btnConfirmCancelTrx');
+            btn.innerText = "MEMPROSES..."; btn.disabled = true;
+            const resetBtn = () => { btn.innerText = "Ya, Batalkan Transaksi"; btn.disabled = false; };
+
+            // Mode Simulasi (tanpa backend)
+            if (typeof google === 'undefined' || !google.script || !google.script.run) {
+                const trx = mockHistoryData.find(t => t[0] === trxId);
+                if (!trx) { resetBtn(); return showNotification("Transaksi tidak ditemukan!", "error"); }
+
+                // Kembalikan stok: baca "Nama (qty), Nama (qty)"
+                const re = /(.+?)\s\(([\d.]+)\)(?:,\s*|$)/g;
+                let m;
+                while ((m = re.exec(trx[4] || '')) !== null) {
+                    const p = allProducts.find(x => x.Nama.toLowerCase() === m[1].trim().toLowerCase());
+                    if (p) p.Stok = (Number(p.Stok) || 0) + (parseFloat(m[2]) || 0);
+                }
+                trx[10] = 'Dibatalkan';
+                trx[11] = currentUser.username;
+                trx[12] = new Date().toLocaleString('id-ID');
+                trx[13] = alasan;
+
+                const debt = allDebts.find(d => d.trxId === trxId);
+                if (debt) { debt.sisaHutang = 0; debt.status = 'Dibatalkan'; }
+
+                renderPOSGrid(allProducts);
+                renderInventoryData();
+                renderDebtTable();
+                renderHistoryList(mockHistoryData);
+                closeCancelTrxModal();
+                resetBtn();
+                showNotification("Transaksi dibatalkan & stok dikembalikan (Simulasi)!", "success");
+                return;
+            }
+
+            google.script.run
+                .withSuccessHandler(res => {
+                    resetBtn();
+                    if (res && res.success) {
+                        closeCancelTrxModal();
+                        showNotification(res.message || "Transaksi dibatalkan & stok dikembalikan!", "success");
+                        refreshData();   // stok terbaru di POS & Inventory
+                        loadHistory();   // riwayat terbaru
+                        loadDebts();     // hutang terkait (jika ada)
+                    } else {
+                        showNotification("Gagal membatalkan: " + ((res && res.message) || "Tidak diketahui"), "error");
+                    }
+                })
+                .withFailureHandler(err => {
+                    resetBtn();
+                    showNotification("Terjadi kesalahan server: " + (err.message || err), "error");
+                })
+                .cancelTransaction({ trxId: trxId, username: currentUser.username, alasan: alasan });
         }
 
         function openReceiptFromHistory(trx) {
@@ -2679,15 +2841,18 @@
             let totalJual = 0; 
             let totalLaba = 0;
             table.innerHTML = currentFilteredReports.map(trx => {
-                totalJual += Number(trx[5] || 0);
-                totalLaba += Number(trx[6] || 0);
+                const cancelled = isTrxCancelled(trx);
+                if (!cancelled) {
+                    totalJual += Number(trx[5] || 0);
+                    totalLaba += Number(trx[6] || 0);
+                }
                 return `
-                <tr class="hover:bg-slate-50">
+                <tr class="hover:bg-slate-50 ${cancelled ? 'line-through text-slate-300 bg-rose-50/40' : ''}">
                     <td class="p-4">${cleanTimeFormat(trx[1])}</td>
                     <td class="p-4 font-mono font-bold text-blue-600">${trx[0]}</td>
                     <td class="p-4 font-bold text-slate-700">${trx[2] || 'Umum'}</td>
                     <td class="p-4 uppercase text-slate-600">${trx[3]}</td>
-                    <td class="p-4"><span class="text-[10px] font-bold uppercase bg-slate-100 text-slate-700 px-2 py-0.5 rounded">${trx[9] || 'Tunai'}</span></td>
+                    <td class="p-4"><span class="text-[10px] font-bold uppercase bg-slate-100 text-slate-700 px-2 py-0.5 rounded">${trx[9] || 'Tunai'}</span>${cancelled ? ' <span class="text-[9px] font-black uppercase bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded no-underline">Batal</span>' : ''}</td>
                     <td class="p-4 italic text-[10px] text-slate-500 max-w-xs truncate">${trx[4]}</td>
                     <td class="p-4 text-right text-red-500 font-semibold">Rp ${Number(trx[7]||0).toLocaleString()}</td>
                     <td class="p-4 text-right text-amber-600 font-semibold">Rp ${Number(trx[8]||0).toLocaleString()}</td>
@@ -2744,7 +2909,8 @@
             if (!reportsToPrint || reportsToPrint.length === 0) {
                 printTable.innerHTML = '<tr><td colspan="9" class="p-4 text-center italic">Tidak ada data transaksi</td></tr>';
             } else {
-                printTable.innerHTML = reportsToPrint.map(trx => {
+                // Transaksi yang dibatalkan tidak dicetak & tidak dihitung
+                printTable.innerHTML = reportsToPrint.filter(trx => !isTrxCancelled(trx)).map(trx => {
                     totalJual += Number(trx[5] || 0);
                     totalLaba += Number(trx[6] || 0);
                     return `
